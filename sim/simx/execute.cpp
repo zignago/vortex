@@ -12,6 +12,7 @@
 // limitations under the License.
 
 #include <iostream>
+#include <vector>
 #include <stdlib.h>
 #include <unistd.h>
 #include <math.h>
@@ -41,7 +42,8 @@ union reg_data_t {
 };
 
 inline uint64_t nan_box(uint32_t value) {
-  return value | 0xffffffff00000000;
+  uint64_t mask = 0xffffffff00000000;
+  return value | mask;
 }
 
 inline bool is_nan_boxed(uint64_t value) {
@@ -79,6 +81,56 @@ void Emulator::execute(const Instr &instr, uint32_t wid, instr_trace_t *trace) {
   auto rsrc2  = instr.getRSrc(2);
   auto immsrc = sext((Word)instr.getImm(), 32);
 
+  // // Assuming MMA instruction is identified by opcode EXT2 and func3 code specific to MMA
+  // if (opcode == OPCODE_EXT2 && func3 == MMA_FUNC3) {
+  //     perform_mma(instr, wid, trace);
+  //     return;
+  // }
+
+  struct freg_data_t {
+    double data[16];  // Store 4x4 matrix in a double array (if double precision is needed)
+};
+
+struct Matrix4x4 {
+  float data[4][4];
+
+  Matrix4x4() {
+    for (int i = 0; i < 4; ++i) {
+      for (int j = 0; j < 4; ++j) {
+        data[i][j] = 0.0f;
+      }
+    }
+  }
+};
+
+// the register file isnt going to have anything about the matrix
+// the operands of the instructions are indices of the register matrix, and the register matrix is a separate storage
+// we are using 4 matrices in total, each 4x4
+const Matrix4x4& fetchMatrix(const Core& core, uint32_t thread_id, int reg) {
+  int mat_index = core.ireg_file_[thread_id][reg].data; //This is not correct, it should be coming from one of the 4 matrices
+  return core.mreg_file_.at(mat_index);
+}
+
+// This is correct
+void matrixMultiplyAccumulate(const Matrix4x4& A, const Matrix4x4& B, Matrix4x4& C) {
+  for (int i = 0; i < 4; ++i) {
+    for (int j = 0; j < 4; ++j) {
+      for (int k = 0; k < 4; ++k) {
+        C.data[i][j] += A.data[i][k] * B.data[k][j];
+      }
+    }
+  }
+}
+
+void storeMatrix(Core& core, uint32_t thread_id, int reg, const Matrix4x4& matrix) {
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            core.freg_file_[thread_id][reg].data[i * 4 + j] = matrix.data[i][j];
+        }
+    }
+}
+
+  
   auto num_threads = arch_.num_threads();
 
   uint32_t thread_start = 0;
@@ -1414,6 +1466,42 @@ void Emulator::execute(const Instr &instr, uint32_t wid, instr_trace_t *trace) {
       std::abort();
     }
   } break;
+  case Opcode::EXT2: {
+    switch (func3) {
+      case 0: { // MMA Operation
+        trace->fu_type = FUType::TU;
+        for (uint32_t t = thread_start; t < num_threads; ++t) {
+          // if (!tmask_.test(t))
+          //   continue;
+
+          // Fetch matrix data from the registers specified in the instruction
+          std::array<float, 16> matrixA = fetch_matrix_data(warp, instr.getRSrc(0));
+          std::array<float, 16> matrixB = fetch_matrix_data(warp, instr.getRSrc(1));
+          std::array<float, 16> matrixC = fetch_matrix_data(warp, instr.getRDest());
+
+          // Perform the MMA operation
+          std::array<float, 16> matrixD = {}; // Result matrix
+          for (int i = 0; i < 4; ++i) {
+            for (int j = 0; j < 4; ++j) {
+              float sum = 0.0f;
+              for (int k = 0; k < 4; ++k) {
+                sum += matrixA[i * 4 + k] * matrixB[k * 4 + j];
+              }
+              matrixD[i * 4 + j] = sum + matrixC[i * 4 + j];
+            }
+          }
+
+          // Store result back into destination register
+          store_matrix_data(warp, instr.getRDest(), matrixD);
+        }
+        rd_write = true;
+        break;
+      }
+      default:
+        std::abort(); // Handle unexpected func3 values
+    }
+    break;
+  }
   default:
     std::abort();
   }

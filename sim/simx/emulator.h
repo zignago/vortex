@@ -74,6 +74,7 @@ private:
     std::vector<std::vector<Word>>    ireg_file;
     std::vector<std::vector<uint64_t>>freg_file;
     std::stack<ipdom_entry_t>         ipdom_stack;
+    std::vector<float, 16UL>          mreg_file;
     Byte                              fcsr;
     uint32_t                          uuid;
   };
@@ -87,6 +88,12 @@ private:
   std::shared_ptr<Instr> decode(uint32_t code) const;
 
   void execute(const Instr &instr, uint32_t wid, instr_trace_t *trace);
+
+  void perform_mma(const Instr &instr, uint32_t wid, instr_trace_t *trace);
+
+  const std::array<float, 16>& fetch_matrix_data(const warp_t& warp, uint32_t regIndex) const;
+  
+  void store_matrix_data(warp_t& warp, uint32_t regIndex, const std::array<float, 16>& data);
 
   void icache_read(void* data, uint64_t addr, uint32_t size);
 

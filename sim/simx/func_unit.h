@@ -54,6 +54,17 @@ public:
 
 ///////////////////////////////////////////////////////////////////////////////
 
+class TensorUnit : public FuncUnit {
+public:
+	static constexpr int LATENCY_MMA = 5;
+
+    TensorUnit(const SimContext& ctx, Core*);
+    
+    void tick();
+};
+
+///////////////////////////////////////////////////////////////////////////////
+
 class FpuUnit : public FuncUnit {
 public:
   FpuUnit(const SimContext& ctx, Core*);

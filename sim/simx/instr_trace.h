@@ -68,6 +68,12 @@ public:
   //-
   FUType     fu_type;
 
+  enum TuType { 
+    MMA,
+  };
+
+  TuType tu_type;
+  
   //--
   union {
     uint32_t unit_type;

@@ -30,6 +30,9 @@
 
 using namespace vortex;
 
+#define VX_CSR_MPM_SCRB_TU             0x701
+#define VX_CSR_MPM_SCRB_TU_H           0x781
+
 Emulator::ipdom_entry_t::ipdom_entry_t(const ThreadMask &tmask, Word PC)
   : tmask(tmask)
   , PC(PC)
@@ -80,6 +83,54 @@ Emulator::Emulator(const Arch &arch, const DCRS &dcrs, Core* core)
 
 Emulator::~Emulator() {
   this->cout_flush();
+}
+
+// Fetches matrix data from specified register within a warp.
+// then returns a reference to the matrix for efficient access.
+const std::array<float, 16>& Emulator::fetch_matrix_data(const warp_t& warp, uint32_t regIndex) const {
+  if (regIndex >= warp.freg_file.size()) {
+    throw std::out_of_range("Register index out of bounds");
+  }
+  return warp.mreg_file.at(regIndex);
+}
+
+// Stores the provided matrix data into the specified register within a warp.
+void Emulator::store_matrix_data(warp_t& warp, uint32_t regIndex, const std::array<float, 16>& data) {
+  if (regIndex >= warp.freg_file.size()) {
+    throw std::out_of_range("Register index out of bounds");
+  }
+
+  // Store the data back into the matrix register
+  warp.mreg_file.at(regIndex) = data;
+
+}
+
+
+// Performs a matrix-matrix addition (MMA) operation on matrices from the source registers
+// and stores the result in the destination register of the specified warp. 
+void Emulator::perform_mma(const Instr &instr, uint32_t wid, instr_trace_t *trace) {
+  warp_t& warp = warps_[wid]; // warp ID to access correct warp
+
+  // Fetch matrix data
+  std::array<float, 16> matrixA = fetch_matrix_data(warp, instr.getRSrc(0));
+  std::array<float, 16> matrixB = fetch_matrix_data(warp, instr.getRSrc(1));
+  std::array<float, 16> matrixC = fetch_matrix_data(warp, instr.getRDest());
+
+  std::array<float, 16> matrixD = {}; // Result matrix
+
+  // Perform MMA
+  for (int i = 0; i < 4; ++i) {
+    for (int j = 0; j < 4; ++j) {
+      float sum = 0.0f;
+      for (int k = 0; k < 4; ++k) {
+        sum += matrixA[i * 4 + k] * matrixB[k * 4 + j];
+      }
+      matrixD[i * 4 + j] = sum + matrixC[i * 4 + j];
+    }
+  }
+
+  // Store results back
+  store_matrix_data(warp, instr.getRDest(), matrixD);
 }
 
 void Emulator::clear() {
@@ -395,6 +446,7 @@ Word Emulator::get_csr(uint32_t addr, uint32_t tid, uint32_t wid) {
         CSR_READ_64(VX_CSR_MPM_SCRB_FPU, core_perf.scrb_fpu);
         CSR_READ_64(VX_CSR_MPM_SCRB_LSU, core_perf.scrb_lsu);
         CSR_READ_64(VX_CSR_MPM_SCRB_SFU, core_perf.scrb_sfu);
+        CSR_READ_64(VX_CSR_MPM_SCRB_TU, core_perf.scrb_tu);
         CSR_READ_64(VX_CSR_MPM_SCRB_WCTL, core_perf.scrb_wctl);
         CSR_READ_64(VX_CSR_MPM_SCRB_CSRS, core_perf.scrb_csrs);
         CSR_READ_64(VX_CSR_MPM_IFETCHES, core_perf.ifetches);

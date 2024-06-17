@@ -56,6 +56,60 @@ void AluUnit::tick() {
 
 ///////////////////////////////////////////////////////////////////////////////
 
+TensorUnit::TensorUnit(const SimContext& ctx, Core* core) : FuncUnit(ctx, core, "TensorUnit") {}
+
+// Tick function for the TensorUnit
+void TensorUnit::tick() {
+    if (core_ == nullptr) {
+        throw std::runtime_error("Core pointer in TensorUnit is null.");
+    }
+
+    for (uint32_t i = 0; i < ISSUE_WIDTH; ++i) {
+        auto& input = Inputs.at(i);
+        if (input.empty()) continue;
+
+        auto& output = Outputs.at(i);
+        auto trace = input.front();
+
+        // Check if the operation type is MMA, adjust according to actual usage
+        if (trace->tu_type == instr_trace_t::MMA) {
+            // Simulate the operation, assuming a simplified processing time
+            output.push(trace, LATENCY_MMA);
+        } else {
+            std::cerr << "Unsupported operation type in TensorUnit: " << static_cast<int>(trace->tu_type) << std::endl;
+            std::abort();
+        }
+        input.pop();
+    }
+}
+
+// TensorUnit::TensorUnit(const SimContext& ctx, Core* core) : FuncUnit(ctx, core, "TU") {}
+    
+// void TensorUnit::tick() {    
+//     for (uint32_t i = 0; i < ISSUE_WIDTH; ++i) {
+//         auto& input = Inputs.at(i);
+//         if (input.empty()) 
+//             continue;
+//         auto& output = Outputs.at(i);
+//         auto trace = input.front();
+//         switch (trace->tu_type) {
+//         case TuType::MMA:
+//             output.send(trace, LATENCY_MMA+1);
+//             break;
+//         default:
+//             std::abort();
+//         }
+//         DT(3, "pipeline-execute: op=" << trace->tu_type << ", " << *trace);
+//         if (trace->eop && trace->fetch_stall) {
+//             assert(core_->stalled_warps_.test(trace->wid));
+//             core_->stalled_warps_.reset(trace->wid);
+//         }
+//         input.pop();
+//     }
+// }
+
+///////////////////////////////////////////////////////////////////////////////
+
 FpuUnit::FpuUnit(const SimContext& ctx, Core* core) : FuncUnit(ctx, core, "FPU") {}
 
 void FpuUnit::tick() {
